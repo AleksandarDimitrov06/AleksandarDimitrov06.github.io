@@ -258,9 +258,8 @@ h1 {
 .piece {
     user-select: none;
     z-index: 2;
-    font-size: 45px;
-    text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s;
+    font-size: 42px;
+    transition: all 0.2s;
     position: absolute;
     top: 50%;
     left: 50%;
@@ -270,12 +269,32 @@ h1 {
     line-height: 0;
 }
 
-.white .piece {
-    color: #2c3e50;
+.white-piece {
+    color: #ffffff;
+    filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.7));
 }
 
-.black .piece {
-    color: #ecf0f1;
+.black-piece {
+    color: #000000;
+    filter: drop-shadow(1px 1px 1px rgba(255, 255, 255, 0.7));
+}
+
+.piece i {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Специфични стилове за по-добра четливост на тъмни полета */
+.black .white-piece {
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.6));
+}
+
+/* Специфични стилове за по-добра четливост на светли полета */
+.white .black-piece {
+    filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
 }
 
 .square:hover .piece {
@@ -327,6 +346,33 @@ button:active {
     font-style: italic;
 }
 
+.square.highlight.castle-move::before {
+    content: "";
+    position: absolute;
+    width: 35%;
+    height: 35%;
+    background-color: #f39c12;
+    border-radius: 50%;
+    z-index: 1;
+    opacity: 0.8;
+    box-shadow: 0 0 10px #f39c12;
+    animation: castleGlow 1.5s infinite alternate;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+@keyframes castleGlow {
+    from {
+        box-shadow: 0 0 5px #f39c12;
+        opacity: 0.7;
+    }
+    to {
+        box-shadow: 0 0 20px #f39c12;
+        opacity: 0.9;
+    }
+}
+
 @media (max-width: 550px) {
     .container {
         padding: 15px;
@@ -344,7 +390,7 @@ button:active {
     }
     
     .piece {
-        font-size: 40px;
+        font-size: 7vw;
     }
     
     .controls {
