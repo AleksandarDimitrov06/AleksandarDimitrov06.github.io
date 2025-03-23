@@ -3,22 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Game</title>
+    <title>Chess Master</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Main Menu Overlay -->
     <div class="menu-overlay" id="menu-overlay">
         <div class="menu-content">
-            <h1>Chess Game</h1>
+            <h1>Chess Master</h1>
+            <p class="tagline">A modern chess experience</p>
             <button id="start-btn">Start New Game</button>
         </div>
     </div>
 
     <div class="container">
-        <h1>Chess Game</h1>
-        <div class="status" id="status">White's turn</div>
-        <div class="board" id="board"></div>
+        <header>
+            <h1>Chess Master</h1>
+            <div class="status" id="status">White's turn</div>
+        </header>
+        
+        <div class="board-container">
+            <div class="board" id="board"></div>
+        </div>
+        
         <div class="controls">
             <button id="reset-btn">Reset Game</button>
             <button id="menu-btn">Main Menu</button>

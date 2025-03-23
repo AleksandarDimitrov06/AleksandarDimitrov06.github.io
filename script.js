@@ -24,6 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show menu on load
     showMenu();
     
+    // Setup event listeners immediately
+    setupEventListeners();
+    
     // Initialize the game
     function initializeGame() {
         gameBoard = createBoard();
@@ -32,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isGameOver = false;
         isInCheck = false;
         renderBoard();
-        setupEventListeners();
         updateStatus();
         
         // Play game start sound
@@ -278,14 +280,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function highlightValidMoves(row, col) {
         const piece = gameBoard[row][col];
         
+        // Check if the king of the current player is in check
+        const isPlayerInCheck = isKingInCheck(currentPlayer, gameBoard);
+        
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 if (isValidMove(row, col, r, c)) {
-                    // Check if this move would put/leave own king in check
+                    // Create a deep copy of the game board for testing
                     const testBoard = JSON.parse(JSON.stringify(gameBoard));
                     testBoard[r][c] = testBoard[row][col];
                     testBoard[row][col] = null;
                     
+                    // Only highlight the move if it doesn't leave the king in check
                     if (!isKingInCheck(piece.color, testBoard)) {
                         const squareElement = document.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
                         squareElement.classList.add('highlight');
@@ -363,22 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Rook moves horizontally or vertically
         if (startRow !== endRow && startCol !== endCol) return false;
         
-        // Check for pieces in the path
-        if (startRow === endRow) {
-            // Horizontal movement
-            const step = startCol < endCol ? 1 : -1;
-            for (let col = startCol + step; col !== endCol; col += step) {
-                if (gameBoard[startRow][col]) return false;
-            }
-        } else {
-            // Vertical movement
-            const step = startRow < endRow ? 1 : -1;
-            for (let row = startRow + step; row !== endRow; row += step) {
-                if (gameBoard[row][startCol]) return false;
-            }
-        }
-        
-        return true;
+        return checkClearPath(startRow, startCol, endRow, endCol, gameBoard);
     }
     
     function isValidKnightMove(startRow, startCol, endRow, endCol) {
@@ -396,26 +387,25 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (rowDiff !== colDiff) return false;
         
-        // Check for pieces in the path
-        const rowStep = startRow < endRow ? 1 : -1;
-        const colStep = startCol < endCol ? 1 : -1;
-        
-        let row = startRow + rowStep;
-        let col = startCol + colStep;
-        
-        while (row !== endRow && col !== endCol) {
-            if (gameBoard[row][col]) return false;
-            row += rowStep;
-            col += colStep;
-        }
-        
-        return true;
+        return checkClearPath(startRow, startCol, endRow, endCol, gameBoard);
     }
     
     function isValidQueenMove(startRow, startCol, endRow, endCol) {
         // Queen combines rook and bishop movements
-        return isValidRookMove(startRow, startCol, endRow, endCol) || 
-               isValidBishopMove(startRow, startCol, endRow, endCol);
+        // Check for horizontal/vertical movement
+        if (startRow === endRow || startCol === endCol) {
+            return checkClearPath(startRow, startCol, endRow, endCol, gameBoard);
+        }
+        
+        // Check for diagonal movement
+        const rowDiff = Math.abs(startRow - endRow);
+        const colDiff = Math.abs(startCol - endCol);
+        
+        if (rowDiff === colDiff) {
+            return checkClearPath(startRow, startCol, endRow, endCol, gameBoard);
+        }
+        
+        return false;
     }
     
     function isValidKingMove(startRow, startCol, endRow, endCol) {
@@ -455,22 +445,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             validMove = Math.abs(c - col) === 1 && row === r + direction;
                             break;
                         case 'rook':
-                            validMove = isValidRookMove(r, c, row, col);
+                            validMove = (r === row || c === col) && checkClearPath(r, c, row, col, board);
                             break;
                         case 'knight':
-                            validMove = isValidKnightMove(r, c, row, col);
+                            // Knight moves in an L-shape: 2 squares in one direction and 1 square perpendicular
+                            const rowDiff = Math.abs(r - row);
+                            const colDiff = Math.abs(c - col);
+                            validMove = (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
                             break;
                         case 'bishop':
-                            validMove = isValidBishopMove(r, c, row, col);
+                            validMove = Math.abs(r - row) === Math.abs(c - col) && checkClearPath(r, c, row, col, board);
                             break;
                         case 'queen':
-                            validMove = isValidQueenMove(r, c, row, col);
+                            validMove = ((r === row || c === col) || (Math.abs(r - row) === Math.abs(c - col))) 
+                                        && checkClearPath(r, c, row, col, board);
                             break;
                         case 'king':
                             // King attacks adjacent squares
-                            const rowDiff = Math.abs(r - row);
-                            const colDiff = Math.abs(c - col);
-                            validMove = rowDiff <= 1 && colDiff <= 1;
+                            const kingRowDiff = Math.abs(r - row);
+                            const kingColDiff = Math.abs(c - col);
+                            validMove = kingRowDiff <= 1 && kingColDiff <= 1;
                             break;
                     }
                     
@@ -498,8 +492,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // Try all possible moves
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
-                if (isValidMove(row, col, r, c)) {
-                    // Test if this move would leave the king in check
+                // First check if the move is valid according to piece movement rules
+                let validMove = false;
+                
+                switch (piece.type) {
+                    case 'pawn':
+                        validMove = isValidPawnMove(row, col, r, c);
+                        break;
+                    case 'rook':
+                        validMove = isValidRookMove(row, col, r, c);
+                        break;
+                    case 'knight':
+                        validMove = isValidKnightMove(row, col, r, c);
+                        break;
+                    case 'bishop':
+                        validMove = isValidBishopMove(row, col, r, c);
+                        break;
+                    case 'queen':
+                        validMove = isValidQueenMove(row, col, r, c);
+                        break;
+                    case 'king':
+                        validMove = isValidKingMove(row, col, r, c);
+                        break;
+                }
+                
+                if (validMove) {
+                    // Then test if this move would leave the king in check
                     const testBoard = JSON.parse(JSON.stringify(board));
                     testBoard[r][c] = testBoard[row][col];
                     testBoard[row][col] = null;
@@ -515,6 +533,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function isCheckmate(color) {
+        // Check if the king is in check
+        if (!isKingInCheck(color, gameBoard)) {
+            return false;
+        }
+        
         // Check if any piece of the specified color can make a legal move
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
@@ -527,11 +550,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // If no piece can make a legal move and the king is in check, it's checkmate
-        return isKingInCheck(color, gameBoard);
+        // If king is in check and no piece can move legally, it's checkmate
+        return true;
     }
     
     function isStalemate(color) {
+        // If the king is in check, it's not stalemate
+        if (isKingInCheck(color, gameBoard)) {
+            return false;
+        }
+        
         // Check if any piece of the specified color can make a legal move
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
@@ -544,8 +572,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // If no piece can make a legal move and the king is NOT in check, it's stalemate
-        return !isKingInCheck(color, gameBoard);
+        // If king is NOT in check and no piece can move legally, it's stalemate
+        return true;
     }
     
     function movePiece(startRow, startCol, endRow, endCol) {
@@ -609,4 +637,26 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Error playing sound:", e);
         }
     }
-}); 
+    
+    // Helper function to check if the path is clear (for rook, bishop, queen)
+    function checkClearPath(startRow, startCol, endRow, endCol, board) {
+        // No need to check if the piece is on the same square
+        if (startRow === endRow && startCol === endCol) return true;
+        
+        // Determine the direction of movement
+        const rowStep = startRow === endRow ? 0 : (startRow < endRow ? 1 : -1);
+        const colStep = startCol === endCol ? 0 : (startCol < endCol ? 1 : -1);
+        
+        let row = startRow + rowStep;
+        let col = startCol + colStep;
+        
+        // Check each square in the path until we reach the end (exclusive of the end square)
+        while (row !== endRow || col !== endCol) {
+            if (board[row][col]) return false; // Path is blocked
+            row += rowStep;
+            col += colStep;
+        }
+        
+        return true;
+    }
+});
