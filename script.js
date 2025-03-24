@@ -23,10 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const pauseButton = document.createElement('button');
     pauseButton.id = 'pause-btn';
     pauseButton.className = 'control-btn';
-    pauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+    pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
     
-    // Insert the pause button after the reset button
-    resetButton.insertAdjacentElement('afterend', pauseButton);
+    // Insert the pause button above the game field
+    const boardContainer = document.querySelector('.board-container');
+    boardContainer.insertAdjacentElement('beforebegin', pauseButton);
     
     // Pause overlay
     const pauseOverlay = document.createElement('div');
@@ -203,6 +204,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // For king moves, verify the move won't put the king in check
+        if (piece.type === 'king') {
+            // Create a test board to check if the destination is safe
+            const testBoard = JSON.parse(JSON.stringify(gameBoard));
+            movePieceOnBoard(testBoard, startRow, startCol, endRow, endCol);
+            
+            // Check if the king would be in check after the move
+            const opponentColor = piece.color === 'white' ? 'black' : 'white';
+            if (isSquareAttacked(endRow, endCol, opponentColor, testBoard)) {
+                console.error(`Invalid king move to [${endRow},${endCol}] - would be in check`);
+                return; // Don't make the move
+            }
+        }
+        
         const isCapture = gameBoard[endRow][endCol] !== null;
         
         // Execute the move
@@ -239,9 +254,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Check if already thinking and log it but continue anyway (we reset this to avoid deadlocks)
+        // Always reset thinking state to recover from potential deadlocks
         if (isComputerThinking) {
             console.warn("Computer already thinking - resetting state and trying again");
+            isComputerThinking = false;
+            blackTimer.classList.remove('thinking');
         }
         
         // Set thinking state
@@ -259,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isComputerThinking = false;
                 computerTimer.classList.remove('thinking');
                 // Force a move if the AI is taking too long
-                useFallbackAI();
+                makeRandomMove();
             }
         }, 5000); // 5 seconds maximum thinking time
         
@@ -285,8 +302,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 computerTimer.classList.remove('thinking');
                 clearTimeout(safetyTimeout);
                 
-                // Handle error state - maybe notify the user
-                statusDisplay.textContent = "Computer error - please reset game";
+                // If there's a serious error, force a random move as last resort
+                console.log("Fallback AI failed, trying makeRandomMove as last resort");
+                setTimeout(() => makeRandomMove(), 500);
             }
         }, 800); // Longer delay for more natural feel
     }
@@ -387,10 +405,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Check for checkmate or stalemate
                 if (isKingInCheck(currentPlayer, gameBoard)) {
-                    console.log("Computer is in checkmate");
-                    isGameOver = true;
-                    statusDisplay.textContent = "White wins by checkmate!";
-                    playSound(gameEndSound);
+                    // Only declare checkmate if the isCheckmate function confirms it
+                    if (isCheckmate(currentPlayer)) {
+                        console.log("Computer is in checkmate");
+                        isGameOver = true;
+                        statusDisplay.textContent = "White wins by checkmate!";
+                        playSound(gameEndSound);
+                    } else {
+                        // The AI should have found valid moves to escape check,
+                        // but since it didn't, we'll force a simple move
+                        console.log("King is in check but not checkmate - forcing a move");
+                        // Reset thinking state before making random move
+                        isComputerThinking = false;
+                        blackTimer.classList.remove('thinking');
+                        
+                        // Add a small delay to ensure UI is updated
+                        setTimeout(() => {
+                            console.log("Executing makeRandomMove after delay");
+                            makeRandomMove();
+                        }, 500);
+                    }
                 } else {
                     console.log("Computer is in stalemate");
                     isGameOver = true;
@@ -414,6 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Function to make a random valid move when all else fails
     function makeRandomMove() {
         if (isGameOver || currentPlayer !== 'black' || isPaused) {
+            console.log("makeRandomMove aborted: Game over, not black's turn, or paused", {
+                isGameOver,
+                currentPlayer,
+                isPaused
+            });
             return;
         }
         
@@ -430,11 +469,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
+        console.log(`Found ${blackPieces.length} black pieces to try moving`);
+        
         // Randomize the pieces array to try different pieces first
         blackPieces.sort(() => Math.random() - 0.5);
         
         // Try to find a valid move for any piece
-        for (const {row, col} of blackPieces) {
+        for (const {row, col, piece} of blackPieces) {
+            console.log(`Trying to find a move for ${piece.type} at [${row},${col}]`);
+            
             // For each piece, try all possible destination squares
             for (let destRow = 0; destRow < 8; destRow++) {
                 for (let destCol = 0; destCol < 8; destCol++) {
@@ -449,30 +492,76 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (isValidMove(row, col, destRow, destCol)) {
                             // Test if this move would put/leave own king in check
                             const testBoard = JSON.parse(JSON.stringify(gameBoard));
-                            testBoard[destRow][destCol] = testBoard[row][col];
-                            testBoard[row][col] = null;
+                            movePieceOnBoard(testBoard, row, col, destRow, destCol);
                             
                             if (!isKingInCheck('black', testBoard)) {
-                                console.log(`Found random valid move from [${row},${col}] to [${destRow},${destCol}]`);
+                                console.log(`FOUND valid move from [${row},${col}] to [${destRow},${destCol}]`);
+                                // Immediately make this move without further delay
                                 makeComputerMove(row, col, destRow, destCol);
                                 return true;
                             }
                         }
                     } catch (e) {
-                        console.error(`Error testing random move from [${row},${col}] to [${destRow},${destCol}]:`, e);
+                        console.error(`Error testing move from [${row},${col}] to [${destRow},${destCol}]:`, e);
                     }
                 }
             }
         }
         
-        console.error("No valid random moves found");
+        console.error("CRITICAL: No valid random moves found despite having escape moves");
+        
+        // Final failsafe - move king to any adjacent square that's not occupied by own pieces
+        const kingPos = findKing('black');
+        if (kingPos) {
+            console.log("Last resort: Trying to move king to any available square");
+            for (let rowOffset = -1; rowOffset <= 1; rowOffset++) {
+                for (let colOffset = -1; colOffset <= 1; colOffset++) {
+                    if (rowOffset === 0 && colOffset === 0) continue;
+                    
+                    const newRow = kingPos.row + rowOffset;
+                    const newCol = kingPos.col + colOffset;
+                    
+                    if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) continue;
+                    if (gameBoard[newRow][newCol] && gameBoard[newRow][newCol].color === 'black') continue;
+                    
+                    // Check if the destination square is under attack
+                    const testBoard = JSON.parse(JSON.stringify(gameBoard));
+                    movePieceOnBoard(testBoard, kingPos.row, kingPos.col, newRow, newCol);
+                    
+                    // Only move the king if the destination square is not under attack
+                    if (!isSquareAttacked(newRow, newCol, 'white', testBoard)) {
+                        try {
+                            makeComputerMove(kingPos.row, kingPos.col, newRow, newCol);
+                            console.log(`Forced king move to [${newRow},${newCol}]`);
+                            return true;
+                        } catch (e) {
+                            console.error("Failed to make forced king move:", e);
+                        }
+                    } else {
+                        console.log(`Cannot move king to [${newRow},${newCol}] as it would be in check`);
+                    }
+                }
+            }
+        }
         
         // If we get here, there are truly no valid moves
         if (isKingInCheck('black', gameBoard)) {
-            console.log("Computer is in checkmate");
-            isGameOver = true;
-            statusDisplay.textContent = "White wins by checkmate!";
-            playSound(gameEndSound);
+            // Only declare checkmate if the isCheckmate function confirms it
+            if (isCheckmate('black')) {
+                console.log("Computer is in checkmate");
+                isGameOver = true;
+                statusDisplay.textContent = "White wins by checkmate!";
+                playSound(gameEndSound);
+            } else {
+                console.log("CRITICAL ERROR: King is in check but not checkmate, yet no moves available");
+                // Emergency recovery - just resume the game
+                isComputerThinking = false;
+                blackTimer.classList.remove('thinking');
+                currentPlayer = 'white'; // Force turn back to white
+                isInCheck = false;
+                updateStatus();
+                startTimer();
+            }
         } else {
             console.log("Computer is in stalemate");
             isGameOver = true;
@@ -607,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Reset the pause button text
-        pauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+        pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
         
         // Clean up Stockfish if it's running
         if (stockfishWorker) {
@@ -725,59 +814,16 @@ document.addEventListener('DOMContentLoaded', () => {
         menuButton.addEventListener('click', () => {
             showMenu();
         });
-        
-        // Fullscreen
-        document.addEventListener('fullscreenchange', updateBoardSize);
-        document.addEventListener('webkitfullscreenchange', updateBoardSize);
-        document.addEventListener('mozfullscreenchange', updateBoardSize);
-        document.addEventListener('MSFullscreenChange', updateBoardSize);
-        
-        // Add fullscreen toggle button event
-        const container = document.querySelector('.container');
-        container.addEventListener('dblclick', toggleFullScreen);
-    }
-    
-    function toggleFullScreen() {
-        if (!document.fullscreenElement &&
-            !document.mozFullScreenElement &&
-            !document.webkitFullscreenElement &&
-            !document.msFullscreenElement) {
-            // Enter fullscreen
-            const container = document.querySelector('.container');
-            if (container.requestFullscreen) {
-                container.requestFullscreen();
-            } else if (container.msRequestFullscreen) {
-                container.msRequestFullscreen();
-            } else if (container.mozRequestFullScreen) {
-                container.mozRequestFullScreen();
-            } else if (container.webkitRequestFullscreen) {
-                container.webkitRequestFullscreen();
-            }
-        } else {
-            // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.msExitFullscreen) {
-                document.msExitFullscreen();
-            } else if (document.mozCancelFullScreen) {
-                document.mozCancelFullScreen();
-            } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-            }
-        }
     }
     
     function updateBoardSize() {
-        const container = document.querySelector('.container');
-        if (document.fullscreenElement ||
-            document.mozFullScreenElement ||
-            document.webkitFullscreenElement ||
-            document.msFullscreenElement) {
-            container.classList.add('fullscreen');
-        } else {
-            container.classList.remove('fullscreen');
-        }
+        // This function can be called on window resize
+        // You can add responsive adjustments here if needed
+        console.log("Window resized, adjusting board size if needed");
     }
+    
+    // Window resize handling
+    window.addEventListener('resize', updateBoardSize);
     
     function handleSquareClick(event) {
         if (isGameOver || isPaused) return;
@@ -815,8 +861,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isValidMove(startRow, startCol, row, col)) {
                     // Test if this move would put/leave own king in check
                     const testBoard = JSON.parse(JSON.stringify(gameBoard));
-                    testBoard[row][col] = testBoard[startRow][startCol];
-                    testBoard[startRow][startCol] = null;
+                    movePieceOnBoard(testBoard, startRow, startCol, row, col);
                     
                     // For kings, this check is already done in isValidKingMove, so we don't need to redo it
                     // For other pieces, we need to check if the move leaves the king in check
@@ -825,7 +870,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Check if this move will put opponent in check
                         const opponentColor = currentPlayer === 'white' ? 'black' : 'white';
-                        testBoard[row][col] = movingPiece; // Make sure the piece is in the test board
+                        // REMOVE THIS LINE: Don't overwrite the test board - movePieceOnBoard already moved the piece correctly
+                        // testBoard[row][col] = movingPiece; // Make sure the piece is in the test board
                         const willGiveCheck = isKingInCheck(opponentColor, testBoard);
                         
                         // Execute the move
@@ -931,17 +977,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // Check if the square king moves through is safe
                     let pathSafe = true;
-                    testBoard[row][col] = null;
-                    testBoard[row][col + 1] = piece;
+                    movePieceOnBoard(testBoard, row, col, row, col + 1);
                     
                     if (isSquareAttacked(row, col + 1, piece.color === 'white' ? 'black' : 'white', testBoard)) {
                         pathSafe = false;
                     }
                     
                     // Also check the destination square
-                    testBoard[row][col + 1] = null;
-                    testBoard[row][col + 2] = piece;
-                    if (pathSafe && !isSquareAttacked(row, col + 2, piece.color === 'white' ? 'black' : 'white', testBoard)) {
+                    const testBoard2 = JSON.parse(JSON.stringify(gameBoard));
+                    movePieceOnBoard(testBoard2, row, col, row, col + 2);
+                    
+                    if (pathSafe && !isSquareAttacked(row, col + 2, piece.color === 'white' ? 'black' : 'white', testBoard2)) {
                         const castleSquare = document.querySelector(`.square[data-row="${row}"][data-col="${col + 2}"]`);
                         castleSquare.classList.add('highlight', 'castle-move');
                     }
@@ -969,17 +1015,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // Check if the square king moves through is safe
                     let pathSafe = true;
-                    testBoard[row][col] = null;
-                    testBoard[row][col - 1] = piece;
+                    movePieceOnBoard(testBoard, row, col, row, col - 1);
                     
                     if (isSquareAttacked(row, col - 1, piece.color === 'white' ? 'black' : 'white', testBoard)) {
                         pathSafe = false;
                     }
                     
                     // Also check the destination square
-                    testBoard[row][col - 1] = null;
-                    testBoard[row][col - 2] = piece;
-                    if (pathSafe && !isSquareAttacked(row, col - 2, piece.color === 'white' ? 'black' : 'white', testBoard)) {
+                    const testBoard2 = JSON.parse(JSON.stringify(gameBoard));
+                    movePieceOnBoard(testBoard2, row, col, row, col - 2);
+                    
+                    if (pathSafe && !isSquareAttacked(row, col - 2, piece.color === 'white' ? 'black' : 'white', testBoard2)) {
                         const castleSquare = document.querySelector(`.square[data-row="${row}"][data-col="${col - 2}"]`);
                         castleSquare.classList.add('highlight', 'castle-move');
                     }
@@ -1002,8 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (isValidMove(row, col, r, c)) {
                         // Test if this move would leave the king in check
                         const testBoard = JSON.parse(JSON.stringify(gameBoard));
-                        testBoard[r][c] = testBoard[row][col];
-                        testBoard[row][col] = null;
+                        movePieceOnBoard(testBoard, row, col, r, c);
                         
                         // Only highlight the move if it doesn't leave the king in check
                         if (!isKingInCheck(piece.color, testBoard)) {
@@ -1356,6 +1401,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             case 'pawn':
                                 // Pawns attack diagonally forward
                                 const direction = piece.color === 'white' ? -1 : 1;
+                                // Check if the attacking pawn can reach the target square diagonally
+                                // The pawn at [r,c] attacks [row,col] if [row,col] is one diagonal step forward
                                 validAttack = (Math.abs(c - col) === 1) && (row === r + direction);
                                 break;
                                 
@@ -1512,8 +1559,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (isValid) {
                         // Create a test board to see if this move would resolve the check
                         const testBoard = JSON.parse(JSON.stringify(board));
-                        testBoard[r][c] = testBoard[row][col];
-                        testBoard[row][col] = null;
+                        movePieceOnBoard(testBoard, row, col, r, c);
                         
                         // Check if this move would leave or get the king out of check
                         const kingInCheck = isKingInCheck(piece.color, testBoard);
@@ -1531,6 +1577,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         console.log(`No valid moves found for ${piece.color} ${piece.type} at [${row},${col}]`);
         return false;
+    }
+    
+    // Helper function to move pieces on a test board without side effects
+    function movePieceOnBoard(board, startRow, startCol, endRow, endCol) {
+        // Move the piece on the provided board
+        const piece = board[startRow][startCol];
+        if (!piece) return;
+        
+        // Move the piece
+        board[endRow][endCol] = piece;
+        board[startRow][startCol] = null;
     }
     
     function isCheckmate(color) {
@@ -1607,9 +1664,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Make a copy of the board for testing
                     const testBoard = JSON.parse(JSON.stringify(gameBoard));
                     // Move the king to the test position
-                    const king = testBoard[kingRow][kingCol];
-                    testBoard[newRow][newCol] = king;
-                    testBoard[kingRow][kingCol] = null;
+                    movePieceOnBoard(testBoard, kingRow, kingCol, newRow, newCol);
                     
                     // Check if the king would be in check in this position
                     const opponentColor = color === 'white' ? 'black' : 'white';
@@ -1797,7 +1852,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear any pause state
         isPaused = false;
         pauseOverlay.style.display = 'none';
-        pauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+        pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
         
         // Store current game mode before resetting
         const playingWithComputer = isComputerOpponent;
@@ -1897,6 +1952,8 @@ document.addEventListener('DOMContentLoaded', () => {
             col += colStep;
         }
         
+        // For attack detection, we want to return true even if there's an opponent's piece at the end
+        // (because that piece can be captured), but we need to know the end square is reachable
         return true;
     }
     
@@ -1916,7 +1973,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseOverlay.style.display = 'flex';
         
         // Update button text
-        pauseButton.innerHTML = '<i class="fas fa-play"></i> Resume';
+        pauseButton.innerHTML = '<i class="fas fa-play"></i>';
         
         console.log("Game paused");
     }
@@ -1930,7 +1987,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseOverlay.style.display = 'none';
         
         // Update button text
-        pauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+        pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
         
         // Restart the timer
         startTimer();

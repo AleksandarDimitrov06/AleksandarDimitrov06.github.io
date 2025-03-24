@@ -129,29 +129,6 @@ body {
     width: 100%;
 }
 
-.container.fullscreen {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
-    max-width: none;
-    background: linear-gradient(135deg, #2c3e50, #1a2530);
-}
-
-.container.fullscreen .board {
-    width: 90vmin;
-    height: 90vmin;
-    max-width: 90vh;
-    max-height: 90vh;
-}
-
-.container.fullscreen .square {
-    font-size: 6vmin;
-}
-
 header {
     margin-bottom: 25px;
 }
@@ -426,16 +403,10 @@ button:active {
 }
 
 #menu-btn:hover {
-    box-shadow: 0 6px 15px rgba(231, 76, 60, 0.5);
+    background-color: #c0392b;
 }
 
-/* Fullscreen instructions */
-.fullscreen-hint {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.7);
-    font-style: italic;
-}
-
+/* Castle move highlight */
 .square.highlight.castle-move::before {
     content: "";
     position: absolute;
@@ -509,11 +480,22 @@ button:active {
 /* Add styles for the pause button and pause overlay */
 #pause-btn {
     background-color: #4CAF50;
-    margin-left: 10px;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.3s ease;
+    position: relative;
+    margin: 0 auto 10px auto;
+    z-index: 10;
 }
 
 #pause-btn:hover {
     background-color: #3e8e41;
+    transform: scale(1.05);
 }
 
 #pause-overlay {
@@ -580,4 +562,15 @@ button:active {
 
 #pause-overlay h2 {
     animation: pausePulse 2s infinite ease-in-out;
+}
+
+#reset-btn {
+    background-color: #f1c40f; /* Yellow */
+    box-shadow: none;
+}
+
+#reset-btn:hover {
+    background-color: #f39c12;
+    box-shadow: none;
+    transform: translateY(-3px);
 } 
