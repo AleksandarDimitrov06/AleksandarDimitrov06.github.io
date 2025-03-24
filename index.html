@@ -14,7 +14,10 @@
         <div class="menu-content">
             <h1>Chess Master</h1>
             <p class="tagline">A modern chess experience</p>
-            <button id="start-btn">Start New Game</button>
+            <div class="menu-buttons">
+                <button id="player-vs-player-btn">Player vs Player</button>
+                <button id="player-vs-computer-btn">Player vs Computer</button>
+            </div>
         </div>
     </div>
 
@@ -22,6 +25,10 @@
         <header>
             <h1>Chess Master</h1>
             <div class="status" id="status">White's turn</div>
+            <div class="timer-container">
+                <div class="timer white-timer" id="white-timer">01:00</div>
+                <div class="timer black-timer" id="black-timer">01:00</div>
+            </div>
         </header>
         
         <div class="board-container">
@@ -42,6 +49,9 @@
     <audio id="game-start-sound" src="sounds/game-start.mp3" preload="auto"></audio>
     <audio id="game-end-sound" src="sounds/game-end.mp3" preload="auto"></audio>
     
+    <!-- Chess utilities and AI -->
+    <script src="js/chess-utils.js"></script>
+    <script src="js/simple-ai.js"></script>
     <script src="script.js"></script>
 </body>
 </html> 
