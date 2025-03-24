@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isInCheck = false;
         renderBoard();
         updateStatus();
+        updateCheckHighlight();
         
         // Play game start sound
         playSound(gameStartSound);
@@ -102,16 +103,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 board.appendChild(square);
-            }
-        }
-
-        // Highlight king in check
-        if (isInCheck) {
-            // The player who's in check is the current player
-            const kingPosition = findKing(currentPlayer);
-            if (kingPosition) {
-                const kingSquare = document.querySelector(`.square[data-row="${kingPosition.row}"][data-col="${kingPosition.col}"]`);
-                kingSquare.classList.add('check');
             }
         }
     }
@@ -216,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = parseInt(squareElement.dataset.row);
         const col = parseInt(squareElement.dataset.col);
         
-        // Clear previous highlights
+        // Clear previous selection highlights but don't clear check highlight
         clearHighlights();
         
         // If a piece is clicked
@@ -230,20 +221,35 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Enforce that we're only moving pieces of the current player's color
             if (movingPiece && movingPiece.color === currentPlayer) {
+                // First, check if this is a king in check trying to move
+                const isKingMoving = movingPiece.type === 'king';
+                
+                // We're doing a basic valid move check to confirm the piece can move according to its rules
                 if (isValidMove(startRow, startCol, row, col)) {
                     // Test if this move would put/leave own king in check
                     const testBoard = JSON.parse(JSON.stringify(gameBoard));
                     testBoard[row][col] = testBoard[startRow][startCol];
                     testBoard[startRow][startCol] = null;
                     
-                    if (!isKingInCheck(currentPlayer, testBoard)) {
+                    // For kings, this check is already done in isValidKingMove, so we don't need to redo it
+                    // For other pieces, we need to check if the move leaves the king in check
+                    if (isKingMoving || !isKingInCheck(currentPlayer, testBoard)) {
                         const isCapture = gameBoard[row][col] !== null;
                         
+                        // Check if this move will put opponent in check
+                        const opponentColor = currentPlayer === 'white' ? 'black' : 'white';
+                        testBoard[row][col] = movingPiece; // Make sure the piece is in the test board
+                        const willGiveCheck = isKingInCheck(opponentColor, testBoard);
+                        
+                        // Execute the move
                         movePiece(startRow, startCol, row, col);
                         selectedPiece = null;
                         
-                        // Play sound for move or capture
-                        if (isCapture) {
+                        // Play appropriate sound
+                        if (willGiveCheck) {
+                            // Only play check sound when giving check
+                            playSound(checkSound);
+                        } else if (isCapture) {
                             playSound(captureSound);
                         } else {
                             playSound(moveSound);
@@ -273,6 +279,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Select a new piece only if it belongs to the current player
             selectPiece(row, col);
         }
+        
+        // Make sure check highlight is maintained
+        updateCheckHighlight();
     }
     
     function selectPiece(row, col) {
@@ -292,8 +301,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // Check if the king of the current player is in check
         const isPlayerInCheck = isKingInCheck(currentPlayer, gameBoard);
         
+        // Special case for king in check - we need to highlight all possible escape squares
+        if (piece.type === 'king' && isPlayerInCheck) {
+            // Highlight all squares where the king can safely move
+            for (let r = Math.max(0, row - 1); r <= Math.min(7, row + 1); r++) {
+                for (let c = Math.max(0, col - 1); c <= Math.min(7, col + 1); c++) {
+                    // Skip the current position
+                    if (row === r && col === c) continue;
+                    
+                    // Skip squares with pieces of the same color
+                    if (gameBoard[r][c] && gameBoard[r][c].color === piece.color) continue;
+                    
+                    // Instead of checking separately, use the isValidKingMove function
+                    // which already has the logic to check if a destination is safe
+                    if (isValidKingMove(row, col, r, c)) {
+                        const squareElement = document.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                        squareElement.classList.add('highlight');
+                    }
+                }
+            }
+        }
         // Special handling for king castling
-        if (piece.type === 'king' && !piece.hasMoved && !isPlayerInCheck) {
+        else if (piece.type === 'king' && !piece.hasMoved && !isPlayerInCheck) {
             // Check kingside castling availability
             const kingsideRookCol = 7;
             const kingsideRook = gameBoard[row][kingsideRookCol];
@@ -322,8 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         pathSafe = false;
                     }
                     
-                    // If path is safe, highlight the castling destination
-                    if (pathSafe) {
+                    // Also check the destination square
+                    testBoard[row][col + 1] = null;
+                    testBoard[row][col + 2] = piece;
+                    if (pathSafe && !isSquareAttacked(row, col + 2, piece.color === 'white' ? 'black' : 'white', testBoard)) {
                         const castleSquare = document.querySelector(`.square[data-row="${row}"][data-col="${col + 2}"]`);
                         castleSquare.classList.add('highlight', 'castle-move');
                     }
@@ -358,8 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         pathSafe = false;
                     }
                     
-                    // If path is safe, highlight the castling destination
-                    if (pathSafe) {
+                    // Also check the destination square
+                    testBoard[row][col - 1] = null;
+                    testBoard[row][col - 2] = piece;
+                    if (pathSafe && !isSquareAttacked(row, col - 2, piece.color === 'white' ? 'black' : 'white', testBoard)) {
                         const castleSquare = document.querySelector(`.square[data-row="${row}"][data-col="${col - 2}"]`);
                         castleSquare.classList.add('highlight', 'castle-move');
                     }
@@ -367,26 +400,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Continue with normal move highlighting
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                // Skip the current position
-                if (row === r && col === c) continue;
-                
-                // Skip squares with pieces of the same color
-                if (gameBoard[r][c] && gameBoard[r][c].color === piece.color) continue;
-                
-                // Check if the move is valid according to piece movement rules
-                if (isValidMove(row, col, r, c)) {
-                    // Test if this move would leave the king in check
-                    const testBoard = JSON.parse(JSON.stringify(gameBoard));
-                    testBoard[r][c] = testBoard[row][col];
-                    testBoard[row][col] = null;
+        // For king in check, only the king's valid moves were processed above
+        // For all other cases, continue with normal move highlighting
+        if (!(piece.type === 'king' && isPlayerInCheck)) {
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    // Skip the current position
+                    if (row === r && col === c) continue;
                     
-                    // Only highlight the move if it doesn't leave the king in check
-                    if (!isKingInCheck(piece.color, testBoard)) {
-                        const squareElement = document.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
-                        squareElement.classList.add('highlight');
+                    // Skip squares with pieces of the same color
+                    if (gameBoard[r][c] && gameBoard[r][c].color === piece.color) continue;
+                    
+                    // Check if the move is valid according to piece movement rules
+                    if (isValidMove(row, col, r, c)) {
+                        // Test if this move would leave the king in check
+                        const testBoard = JSON.parse(JSON.stringify(gameBoard));
+                        testBoard[r][c] = testBoard[row][col];
+                        testBoard[row][col] = null;
+                        
+                        // Only highlight the move if it doesn't leave the king in check
+                        if (!isKingInCheck(piece.color, testBoard)) {
+                            const squareElement = document.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                            squareElement.classList.add('highlight');
+                        }
                     }
                 }
             }
@@ -396,8 +432,28 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearHighlights() {
         const squares = document.querySelectorAll('.square');
         squares.forEach(square => {
-            square.classList.remove('selected', 'highlight', 'check');
+            square.classList.remove('selected', 'highlight');
+            // Don't remove the check class here - it will be handled separately
         });
+    }
+    
+    // Add a new function to specifically handle check highlighting
+    function updateCheckHighlight() {
+        // First remove any existing check highlight
+        document.querySelectorAll('.square').forEach(square => {
+            square.classList.remove('check');
+        });
+        
+        // Only add check highlight if a king is in check
+        if (isInCheck) {
+            const kingPosition = findKing(currentPlayer);
+            if (kingPosition) {
+                const kingSquare = document.querySelector(`.square[data-row="${kingPosition.row}"][data-col="${kingPosition.col}"]`);
+                if (kingSquare) {
+                    kingSquare.classList.add('check');
+                }
+            }
+        }
     }
     
     function isValidMove(startRow, startCol, endRow, endCol) {
@@ -511,6 +567,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const colDiff = Math.abs(startCol - endCol);
         
         if (rowDiff <= 1 && colDiff <= 1) {
+            // Create a test board to check if the destination square is safe from attack
+            const testBoard = JSON.parse(JSON.stringify(gameBoard));
+            testBoard[endRow][endCol] = king;
+            testBoard[startRow][startCol] = null;
+            
+            // Ensure the king doesn't move to a square that's under attack
+            const opponentColor = king.color === 'white' ? 'black' : 'white';
+            if (isSquareAttacked(endRow, endCol, opponentColor, testBoard)) {
+                return false;
+            }
+            
             return true;
         }
         
@@ -541,6 +608,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return false;
                 }
                 
+                // Also check the destination square
+                testBoard[startRow][startCol + 1] = null;
+                testBoard[startRow][startCol + 2] = king;
+                if (isSquareAttacked(startRow, startCol + 2, king.color === 'white' ? 'black' : 'white', testBoard)) {
+                    return false;
+                }
+                
                 return true;
             }
             
@@ -566,6 +640,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 testBoard[startRow][startCol] = null;
                 testBoard[startRow][startCol - 1] = king;
                 if (isSquareAttacked(startRow, startCol - 1, king.color === 'white' ? 'black' : 'white', testBoard)) {
+                    return false;
+                }
+                
+                // Also check the destination square
+                testBoard[startRow][startCol - 1] = null;
+                testBoard[startRow][startCol - 2] = king;
+                if (isSquareAttacked(startRow, startCol - 2, king.color === 'white' ? 'black' : 'white', testBoard)) {
                     return false;
                 }
                 
@@ -770,10 +851,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // After switching turns, check if the new current player is in check
         isInCheck = isKingInCheck(currentPlayer, gameBoard);
         
-        // Check for check sound
-        if (isInCheck) {
-            playSound(checkSound);
-        }
+        // Update the check highlight
+        updateCheckHighlight();
+        
+        // We don't need to play the check sound here anymore
+        // It is now played when the move is made
         
         // Check for checkmate
         if (isInCheck && isCheckmate(currentPlayer)) {
@@ -814,6 +896,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isInCheck = false;
         renderBoard();
         updateStatus();
+        updateCheckHighlight();
         
         // Play game start sound
         playSound(gameStartSound);
