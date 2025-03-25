@@ -66,7 +66,7 @@ function handleIceCandidate(event) {
 
 // Handle connection state changes
 function handleConnectionStateChange() {
-    console.log('Connection state:', peerConnection.connectionState);
+    console.log('Connection state changed to:', peerConnection.connectionState);
     
     // Update connection status indicator
     updateConnectionStatus(peerConnection.connectionState);
@@ -75,10 +75,43 @@ function handleConnectionStateChange() {
         case 'connected':
             showNotification('Connected to opponent!', 'success');
             hideRoomCodeDisplay();
+            
+            // Make sure the game state is properly set
+            isMultiplayerGame = true;
+            isGameStarted = true;
+            
+            // Force an update of the multiplayer UI
+            setTimeout(() => {
+                try {
+                    updateMultiplayerUI();
+                } catch (err) {
+                    console.error('Error updating UI:', err);
+                }
+            }, 500);
             break;
+            
+        case 'connecting':
+            showNotification('Connecting to opponent...', 'info');
+            break;
+            
         case 'disconnected':
-        case 'failed':
             showNotification('Connection lost with opponent', 'error');
+            // Don't end the game immediately, try to recover
+            setTimeout(() => {
+                if (peerConnection.connectionState === 'disconnected') {
+                    handleDisconnect();
+                }
+            }, 5000);
+            break;
+            
+        case 'failed':
+            showNotification('Connection failed', 'error');
+            // End the multiplayer game
+            handleDisconnect();
+            break;
+            
+        case 'closed':
+            showNotification('Connection closed', 'info');
             // End the multiplayer game
             handleDisconnect();
             break;
@@ -95,20 +128,38 @@ function handleDataChannel(event) {
 function setupDataChannel() {
     dataChannel.onopen = () => {
         console.log('Data channel is open');
+        showNotification('Data channel opened', 'success');
+        
         // If we're not the host, we're ready to play
         if (!isHost) {
+            console.log('Sending ready signal to host');
             // Signal that we're ready to start the game
             sendGameData({ type: 'ready' });
         }
+        
+        // Force an update of the multiplayer UI
+        setTimeout(() => {
+            try {
+                updateMultiplayerUI();
+            } catch (err) {
+                console.error('Error updating UI after data channel open:', err);
+            }
+        }, 500);
     };
     
     dataChannel.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleGameMessage(data);
+        console.log('Data channel message received:', event.data);
+        try {
+            const data = JSON.parse(event.data);
+            handleGameMessage(data);
+        } catch (error) {
+            console.error('Error parsing message data:', error);
+        }
     };
     
     dataChannel.onclose = () => {
         console.log('Data channel closed');
+        showNotification('Connection closed', 'warning');
         handleDisconnect();
     };
     
@@ -336,6 +387,10 @@ function joinRoom(code, callback) {
     isGameStarted = false;
     pendingCandidates = [];
     
+    // Clear any previous errors
+    console.log(`=====================`);
+    console.log(`Join attempt started for code: ${code}`);
+    
     // Normalize the game ID (remove any URL parts if it's a shared link)
     gameId = normalizeGameId(code);
     
@@ -372,7 +427,9 @@ function joinRoom(code, callback) {
         }
         
         try {
+            console.log(`Join response text: ${xhr.responseText}`);
             const data = JSON.parse(xhr.responseText);
+            console.log('Parsed join response:', data);
             
             if (!data.success) {
                 throw new Error(data.message || 'Game not found');
@@ -386,14 +443,18 @@ function joinRoom(code, callback) {
             // Set the remote description from the offer
             peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp))
                 .then(() => {
+                    console.log('Remote description set successfully');
                     // Create an answer
+                    console.log('Creating answer...');
                     return peerConnection.createAnswer();
                 })
                 .then(answer => {
+                    console.log('Answer created, setting local description');
                     // Set local description
                     return peerConnection.setLocalDescription(answer);
                 })
                 .then(() => {
+                    console.log('Local description set successfully');
                     // After local description is set, send any pending ICE candidates
                     if (pendingCandidates && pendingCandidates.length > 0) {
                         console.log(`Sending ${pendingCandidates.length} pending ICE candidates after setting local description`);
@@ -420,6 +481,7 @@ function joinRoom(code, callback) {
                     // Use direct URL construction with verification
                     const answerUrl = verifyUrl(safeServerUrl('/answer'));
                     console.log(`Sending answer to: ${answerUrl}`);
+                    console.log('Answer data:', JSON.stringify(signalData));
                     
                     // Use XMLHttpRequest for answer as well
                     const answerXhr = new XMLHttpRequest();
@@ -428,6 +490,11 @@ function joinRoom(code, callback) {
                     
                     answerXhr.onreadystatechange = function() {
                         if (answerXhr.readyState !== 4) return;
+                        
+                        console.log(`Answer response status: ${answerXhr.status}`);
+                        if (answerXhr.responseText) {
+                            console.log(`Answer response: ${answerXhr.responseText}`);
+                        }
                         
                         if (answerXhr.status !== 200) {
                             console.error(`Server answered with ${answerXhr.status}`);
@@ -438,6 +505,7 @@ function joinRoom(code, callback) {
                         
                         try {
                             const responseData = JSON.parse(answerXhr.responseText);
+                            console.log('Parsed answer response:', responseData);
                             
                             if (responseData.success) {
                                 isMultiplayerGame = true;
@@ -446,6 +514,9 @@ function joinRoom(code, callback) {
                                 pollForIceCandidates();
                                 
                                 showNotification('Joining game...', 'info');
+                                
+                                // Make sure the game UI is visible
+                                ensureGameUIVisible();
                                 
                                 if (callback) callback({ success: true });
                             } else {
@@ -631,8 +702,8 @@ function pollForIceCandidates() {
 
 // Generate a unique game ID
 function generateUniqueId() {
-    // Generate an 8-character alphanumeric code
-    return Math.random().toString(36).substring(2, 10).toUpperCase();
+    // Generate a 6-character alphanumeric code
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 // Create a shareable link from game ID
@@ -744,27 +815,46 @@ function handleGameMessage(data) {
 
 // Start the game when both players are connected
 function startGame() {
-    console.log('Starting game');
+    console.log('Starting multiplayer game');
     
     // Set the game as started
     isGameStarted = true;
+    isMultiplayerGame = true;
     
     // If host, signal the game start to the other player
     if (isHost) {
+        console.log('Host sending ready signal to other player');
         sendGameData({ type: 'ready' });
     }
     
-    // Update the game state
-    isMultiplayerGame = true;
-    
     // Reset the game for multiplayer
-    resetGame();
+    try {
+        console.log('Resetting game for multiplayer');
+        if (typeof resetGame === 'function') {
+            resetGame();
+        } else if (window.resetGame) {
+            window.resetGame();
+        } else {
+            console.error('resetGame function not found');
+        }
+    } catch (error) {
+        console.error('Error resetting game:', error);
+    }
     
     // Set who moves first (white always starts)
     isMyTurn = playerColor === 'white';
+    console.log(`Player color: ${playerColor}, isMyTurn: ${isMyTurn}`);
+    
+    // Ensure game UI is visible
+    ensureGameUIVisible();
     
     // Update the UI for multiplayer game
-    updateMultiplayerUI();
+    try {
+        console.log('Updating multiplayer UI');
+        updateMultiplayerUI();
+    } catch (error) {
+        console.error('Error updating UI:', error);
+    }
     
     // Show notification to both players
     if (playerColor === 'white') {
@@ -775,6 +865,12 @@ function startGame() {
     
     // Hide the room code display now that the game is starting
     hideRoomCodeDisplay();
+    
+    // Hide multiplayer dialog if it's still visible
+    const multiplayerDialog = document.getElementById('multiplayer-dialog');
+    if (multiplayerDialog) {
+        multiplayerDialog.style.display = 'none';
+    }
 }
 
 // Apply a move received from the opponent
@@ -1850,4 +1946,33 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     `;
     document.head.appendChild(style);
-}); 
+});
+
+// Helper function to ensure game UI is visible
+function ensureGameUIVisible() {
+    console.log('Ensuring game UI is visible');
+    
+    // Hide any menu overlays
+    const menuOverlay = document.getElementById('menu-overlay');
+    if (menuOverlay) {
+        menuOverlay.style.display = 'none';
+    }
+    
+    // Hide multiplayer dialog
+    const multiplayerDialog = document.getElementById('multiplayer-dialog');
+    if (multiplayerDialog) {
+        multiplayerDialog.style.display = 'none';
+    }
+    
+    // Show game container
+    const container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'block';
+    }
+    
+    // Make sure board is visible
+    const board = document.getElementById('board');
+    if (board) {
+        board.style.display = 'grid';
+    }
+} 

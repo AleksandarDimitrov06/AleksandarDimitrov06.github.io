@@ -2292,12 +2292,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            multiplayerDialog.style.display = 'none';
+            // Show joining notification before hiding dialog
+            showNotification(`Joining game with code ${code}...`, 'info');
+            
+            // First disable the button to prevent double-clicks
+            joinWithCodeBtn.disabled = true;
+            joinWithCodeBtn.textContent = 'Connecting...';
             
             // Join room via multiplayer module
             window.multiplayerModule.joinRoom(code, (response) => {
-                console.log('Room joined:', response);
+                console.log('Room joined response:', response);
+                
+                if (response && response.success) {
+                    // Success - hide dialog and show game board
+                    multiplayerDialog.style.display = 'none';
+                    showNotification(`Successfully joined game!`, 'success');
+                    
+                    // Ensure the game container is visible
+                    const container = document.querySelector('.container');
+                    if (container) {
+                        container.style.display = 'block';
+                    }
+                } else {
+                    // Error - show error and re-enable button
+                    const errorMsg = response && response.message ? response.message : 'Failed to join game';
+                    showNotification(`Error: ${errorMsg}`, 'error');
+                    
+                    joinWithCodeBtn.disabled = false;
+                    joinWithCodeBtn.textContent = 'Join';
+                    
+                    // Keep the dialog open on error
+                    return;
+                }
             });
+            
+            // Hide dialog only if we proceed with joining
+            multiplayerDialog.style.display = 'none';
         });
         
         // Return to main menu
