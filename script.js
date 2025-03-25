@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isComputerOpponent = false;
     let isComputerThinking = false;
     let stockfishWorker = null;
+    let gameDifficulty = 'easy'; // Default difficulty setting
     let isPaused = false;
     
     // Timer state
@@ -83,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error("Error terminating existing worker:", e);
             }
+            stockfishWorker = null;
         }
         
         console.log("Initializing Stockfish worker...");
@@ -148,11 +150,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     blackTimer.classList.remove('thinking');
                     useFallbackAI();
                 }
+                
+                // Set stockfishWorker to null to ensure we don't try to use it again
+                stockfishWorker = null;
             };
             
-            // Initialize the engine
+            // Initialize the engine with a timeout to ensure it's actually working
             stockfishWorker.postMessage({ type: 'init' });
             console.log("Init message sent to worker");
+            
+            // Set a timeout to check if Stockfish is operational
+            setTimeout(() => {
+                // If we haven't received a 'ready' message, assume Stockfish failed
+                if (stockfishWorker && !stockfishWorker.isReady) {
+                    console.warn("Stockfish didn't initialize properly within timeout");
+                    // Don't set to null, we'll try one more time later if needed
+                }
+            }, 2000);
+            
         } catch (e) {
             console.error("Error initializing Stockfish:", e);
             stockfishWorker = null; // Make sure we clear it so we use the fallback
@@ -292,8 +307,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                // Always use the fallback AI for reliability
-                useFallbackAI();
+                // Try using Stockfish first, then fall back to simple AI
+                if (stockfishWorker) {
+                    requestStockfishMove();
+                } else {
+                    // Use the fallback AI if Stockfish is not available
+                    useFallbackAI();
+                }
                 clearTimeout(safetyTimeout);
             } catch (e) {
                 console.error("Error in computer move request:", e);
@@ -303,10 +323,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearTimeout(safetyTimeout);
                 
                 // If there's a serious error, force a random move as last resort
-                console.log("Fallback AI failed, trying makeRandomMove as last resort");
+                console.log("AI failed, trying makeRandomMove as last resort");
                 setTimeout(() => makeRandomMove(), 500);
             }
         }, 800); // Longer delay for more natural feel
+    }
+    
+    // Request a move from Stockfish
+    function requestStockfishMove() {
+        if (!stockfishWorker || isGameOver || currentPlayer !== 'black' || isPaused) {
+            console.log("Stockfish not available or game state changed");
+            useFallbackAI();
+            return;
+        }
+        
+        console.log("Requesting move from Stockfish with difficulty:", gameDifficulty);
+        
+        try {
+            // Set search depth based on difficulty - increased for more challenge
+            let searchDepth = 15; // Medium difficulty - increased from 12
+            
+            if (gameDifficulty === 'easy') {
+                searchDepth = 8; // Easy - shallow search but increased from 5
+            } else if (gameDifficulty === 'hard') {
+                searchDepth = 22; // Hard - deeper search - increased from 18
+            }
+            
+            // Convert board to FEN
+            const castlingRights = getCastlingRights(gameBoard);
+            const fen = boardToFen(gameBoard, currentPlayer, castlingRights);
+            console.log("Current position FEN:", fen);
+            
+            // Set the position and request a move
+            stockfishWorker.postMessage({ type: 'position', fen: fen });
+            stockfishWorker.postMessage({ 
+                type: 'go', 
+                depth: searchDepth,
+                difficulty: gameDifficulty // Pass difficulty directly
+            });
+        } catch (e) {
+            console.error("Error requesting move from Stockfish:", e);
+            // Fall back to simple AI
+            useFallbackAI();
+        }
     }
     
     // Use the simple AI as a fallback
@@ -385,7 +444,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentPlayer, 
                 isValidMoveWrapper, 
                 movePieceWrapper, 
-                isKingInCheckWrapper
+                isKingInCheckWrapper,
+                gameDifficulty // Pass the difficulty setting
             );
             
             if (bestMove) {
@@ -794,26 +854,76 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function setupEventListeners() {
-        // Game board and control buttons
+        // Board click events
+        const board = document.getElementById('board');
         board.addEventListener('click', handleSquareClick);
-        resetButton.addEventListener('click', resetGame);
-        pauseButton.addEventListener('click', togglePauseResume);
-        resumeButton.addEventListener('click', resumeGame);
         
-        // Menu buttons
-        playerVsPlayerBtn.addEventListener('click', () => {
+        // Game control buttons
+        const resetButton = document.getElementById('reset-btn');
+        const menuButton = document.getElementById('menu-btn');
+        const playerVsPlayerButton = document.getElementById('player-vs-player-btn');
+        const playerVsComputerButton = document.getElementById('player-vs-computer-btn');
+        const pauseButton = document.getElementById('pause-btn');
+        const resumeButton = document.getElementById('resume-btn');
+        
+        // Get difficulty buttons
+        const easyButton = document.getElementById('easy-btn');
+        const mediumButton = document.getElementById('medium-btn');
+        const hardButton = document.getElementById('hard-btn');
+        
+        // Add difficulty button event listeners
+        easyButton.addEventListener('click', () => {
+            setDifficulty('easy');
+            updateDifficultyButtons('easy');
+        });
+        
+        mediumButton.addEventListener('click', () => {
+            setDifficulty('medium');
+            updateDifficultyButtons('medium');
+        });
+        
+        hardButton.addEventListener('click', () => {
+            setDifficulty('hard');
+            updateDifficultyButtons('hard');
+        });
+        
+        resetButton.addEventListener('click', resetGame);
+        menuButton.addEventListener('click', showMenu);
+        
+        if (pauseButton) pauseButton.addEventListener('click', togglePauseResume);
+        if (resumeButton) resumeButton.addEventListener('click', resumeGame);
+        
+        playerVsPlayerButton.addEventListener('click', () => {
             hideMenu();
             initializeGame(false);
         });
         
-        playerVsComputerBtn.addEventListener('click', () => {
+        playerVsComputerButton.addEventListener('click', () => {
             hideMenu();
             initializeGame(true);
         });
         
-        menuButton.addEventListener('click', () => {
-            showMenu();
+        // Add resize event listener for responsive board
+        window.addEventListener('resize', updateBoardSize);
+        
+        // Initial board size update
+        updateBoardSize();
+    }
+    
+    // Update the difficulty button states
+    function updateDifficultyButtons(activeDifficulty) {
+        const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+        difficultyButtons.forEach(button => {
+            button.classList.remove('active');
         });
+        
+        document.getElementById(`${activeDifficulty}-btn`).classList.add('active');
+    }
+    
+    // Set the game difficulty
+    function setDifficulty(difficulty) {
+        gameDifficulty = difficulty;
+        console.log(`Game difficulty set to: ${difficulty}`);
     }
     
     function updateBoardSize() {

@@ -76,9 +76,43 @@ self.onmessage = function(event) {
         stockfish.postMessage(`position fen ${data.fen}`);
     } else if (data.type === 'go') {
         // Start calculating best move
-        // Can adjust depth for difficulty (higher = stronger)
-        const depth = data.depth || 5; // Lower depth for faster moves during testing
-        stockfish.postMessage(`go depth ${depth}`);
+        // Use difficulty-based depth and settings
+        let depth = 12; // Default to medium difficulty
+        let moveTime = null;
+        let skillLevel = 20; // Default maximum skill (0-20)
+        
+        if (data.depth) {
+            depth = data.depth;
+        } else if (data.difficulty) {
+            switch (data.difficulty) {
+                case 'easy':
+                    depth = 8; // Increased from 5
+                    skillLevel = 8; // Lower skill = makes mistakes
+                    moveTime = 700; // Short thinking time, but increased
+                    break;
+                case 'medium':
+                    depth = 15; // Increased from 12
+                    skillLevel = 15;
+                    break;
+                case 'hard':
+                    depth = 22; // Increased from 18
+                    skillLevel = 20; // Maximum skill
+                    break;
+                default:
+                    depth = 12;
+            }
+        }
+        
+        // Set skill level (0-20)
+        stockfish.postMessage(`setoption name Skill Level value ${skillLevel}`);
+        
+        // In hard mode, also use more time for calculation
+        let command = `go depth ${depth}`;
+        if (moveTime) {
+            command = `go movetime ${moveTime}`;
+        }
+        
+        stockfish.postMessage(command);
     } else if (data.type === 'stop') {
         // Stop calculation
         stockfish.postMessage('stop');
