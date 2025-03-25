@@ -944,7 +944,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         resetButton.addEventListener('click', resetGame);
-        menuButton.addEventListener('click', showMenu);
+        menuButton.addEventListener('click', () => {
+            // If in multiplayer game, confirm before leaving
+            if (window.multiplayerModule && window.multiplayerModule.isMultiplayerGame()) {
+                if (confirm('Are you sure you want to leave the current game?')) {
+                    window.multiplayerModule.leaveGame();
+                }
+            } else {
+                showMenu();
+            }
+        });
         
         if (pauseButton) pauseButton.addEventListener('click', togglePauseResume);
         if (resumeButton) resumeButton.addEventListener('click', resumeGame);
@@ -961,6 +970,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add resize event listener for responsive board
         window.addEventListener('resize', updateBoardSize);
+        
+        // Set up multiplayer-specific event listeners
+        setupMultiplayerEventListeners();
         
         // Initial board size update
         updateBoardSize();
@@ -1899,44 +1911,92 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function movePiece(startRow, startCol, endRow, endCol) {
+        // Get the piece that is being moved
         const piece = gameBoard[startRow][startCol];
         
-        // Handle castling for king
-        if (piece.type === 'king' && Math.abs(startCol - endCol) === 2) {
-            // Kingside castling
-            if (endCol > startCol) {
-                // Move rook from h-file to f-file
-                const rookCol = 7;
-                const rook = gameBoard[startRow][rookCol];
-                gameBoard[startRow][endCol - 1] = rook; // Place rook on the square the king crossed
-                gameBoard[startRow][rookCol] = null;    // Remove rook from original position
-            } 
-            // Queenside castling
-            else {
-                // Move rook from a-file to d-file
-                const rookCol = 0;
-                const rook = gameBoard[startRow][rookCol];
-                gameBoard[startRow][endCol + 1] = rook; // Place rook on the square the king crossed
-                gameBoard[startRow][rookCol] = null;    // Remove rook from original position
+        // Check if there's a piece to move
+        if (!piece) {
+            console.error(`No piece at [${startRow},${startCol}]`);
+            return false;
+        }
+        
+        // Check if it's this player's turn in multiplayer
+        if (window.multiplayerModule && window.multiplayerModule.isMultiplayerGame()) {
+            if (!window.multiplayerModule.isMyTurn()) {
+                console.error("Not your turn in multiplayer game");
+                return false;
+            }
+            
+            // Check if piece color matches player color in multiplayer
+            const playerColor = window.multiplayerModule.getPlayerColor();
+            if (piece.color !== playerColor) {
+                console.error(`Cannot move opponent's piece in multiplayer game`);
+                return false;
             }
         }
         
-        // Update hasMoved property for kings and rooks
+        console.log(`Moving ${piece.color} ${piece.type} from [${startRow},${startCol}] to [${endRow},${endCol}]`);
+        
+        // Check if this is a castling move
+        if (piece.type === 'king' && Math.abs(startCol - endCol) === 2) {
+            // Determine if it's kingside or queenside castling
+            const isKingside = endCol > startCol;
+            const rookCol = isKingside ? 7 : 0;
+            const rookNewCol = isKingside ? endCol - 1 : endCol + 1;
+            
+            // Move the rook
+            gameBoard[endRow][rookNewCol] = gameBoard[endRow][rookCol];
+            gameBoard[endRow][rookCol] = null;
+            
+            // Mark the rook as moved
+            if (gameBoard[endRow][rookNewCol]) {
+                gameBoard[endRow][rookNewCol].hasMoved = true;
+            }
+            
+            // Play the move sound
+            playSound(moveSound);
+        } else if (gameBoard[endRow][endCol]) {
+            // This is a capture
+            playSound(captureSound);
+        } else {
+            // Regular move
+            playSound(moveSound);
+        }
+        
+        // Execute the move
+        gameBoard[endRow][endCol] = piece;
+        gameBoard[startRow][startCol] = null;
+        
+        // Mark king and rook as moved (for castling logic)
         if (piece.type === 'king' || piece.type === 'rook') {
             piece.hasMoved = true;
         }
         
-        // Move the piece
-        gameBoard[endRow][endCol] = piece;
-        gameBoard[startRow][startCol] = null;
-        
-        // Handle pawn promotion (simplified - always promotes to queen)
+        // Handle pawn promotion
         if (piece.type === 'pawn' && (endRow === 0 || endRow === 7)) {
             piece.type = 'queen';
+            
+            // Play a sound for promotion
+            playSound(captureSound);
+            
+            console.log(`Pawn promoted to queen at [${endRow},${endCol}]`);
         }
         
         // Re-render the board after moving
         renderBoard();
+        
+        // If this is a multiplayer game and it's the player's turn, send the move
+        if (window.multiplayerModule && window.multiplayerModule.isMultiplayerGame() && window.multiplayerModule.isMyTurn()) {
+            console.log("Sending multiplayer move");
+            window.multiplayerModule.sendMove({
+                startRow, 
+                startCol, 
+                endRow, 
+                endCol
+            });
+        }
+        
+        return true;
     }
     
     // Switch turns between players
@@ -2187,6 +2247,95 @@ document.addEventListener('DOMContentLoaded', () => {
             resumeGame();
         } else {
             pauseGame();
+        }
+    }
+    
+    // Add multiplayer event listeners
+    function setupMultiplayerEventListeners() {
+        const multiplayerBtn = document.getElementById('multiplayer-btn');
+        const multiplayerDialog = document.getElementById('multiplayer-dialog');
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        const joinWithCodeBtn = document.getElementById('join-with-code-btn');
+        const backToMenuBtn = document.getElementById('back-to-menu-btn');
+        const joinRoomForm = document.getElementById('join-room-form');
+        const roomCodeInput = document.getElementById('room-code-input');
+        
+        // Show multiplayer options
+        multiplayerBtn.addEventListener('click', () => {
+            hideMenu();
+            multiplayerDialog.style.display = 'flex';
+        });
+        
+        // Create a new game room
+        createRoomBtn.addEventListener('click', () => {
+            multiplayerDialog.style.display = 'none';
+            
+            // Create room via multiplayer module
+            window.multiplayerModule.createRoom((response) => {
+                console.log('Room created:', response);
+            });
+        });
+        
+        // Show join room form
+        joinRoomBtn.addEventListener('click', () => {
+            joinRoomForm.style.display = 'block';
+            roomCodeInput.focus();
+        });
+        
+        // Join an existing room
+        joinWithCodeBtn.addEventListener('click', () => {
+            const code = roomCodeInput.value.trim().toUpperCase();
+            
+            if (code.length < 6) {
+                showNotification('Please enter a valid room code', 'error');
+                return;
+            }
+            
+            multiplayerDialog.style.display = 'none';
+            
+            // Join room via multiplayer module
+            window.multiplayerModule.joinRoom(code, (response) => {
+                console.log('Room joined:', response);
+            });
+        });
+        
+        // Return to main menu
+        backToMenuBtn.addEventListener('click', () => {
+            multiplayerDialog.style.display = 'none';
+            showMenu();
+        });
+        
+        // Allow pressing Enter to join a room
+        roomCodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinWithCodeBtn.click();
+            }
+        });
+    }
+    
+    // Helper function to show notifications (for multiplayer)
+    function showNotification(message, type = 'info') {
+        if (window.multiplayerModule) {
+            // Use the multiplayer module's notification function
+            const notificationFunc = window.multiplayerModule.showNotification || function(msg, t) {
+                console.log(`Notification: ${msg} (${t})`);
+            };
+            notificationFunc(message, type);
+        } else {
+            // Fallback for when module isn't available
+            console.log(`Notification: ${message} (${type})`);
+            
+            // Create a temporary notification element
+            let notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
         }
     }
 });

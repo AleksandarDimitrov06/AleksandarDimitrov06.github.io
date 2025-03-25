@@ -1,94 +1,107 @@
-# Chess Game
+# Chess Master
 
-A simple chess game built with HTML, CSS, and JavaScript.
+A feature-rich Chess game with peer-to-peer multiplayer functionality - no server required!
 
 ## Features
 
-- Complete chess board with all pieces
-- Two game modes:
-  - Player vs Player (local)
-  - Player vs Computer (using Stockfish chess engine)
-- Visual highlighting of selected pieces and valid moves with small circles
-- Turn-based gameplay (white goes first)
-- Advanced chess rules implementation:
-  - Check detection and visualization
-  - Checkmate detection with game-over state
-  - Stalemate detection
-  - Prevention of moves that would put your own king in check
-  - Castling (kingside and queenside)
-  - Pawn promotion to queen
-- Move timer (60 seconds per move) with timeout victory condition
-- Main menu interface
-- Sound effects for moves, captures, checks, and game events
-- Reset game functionality
-- Fullscreen mode (double-click anywhere to toggle)
-- Responsive design
+- Local 2-player mode
+- Computer opponent with adjustable difficulty (Easy, Medium, Hard)
+- Peer-to-peer online multiplayer via WebRTC - no server needed!
+- Shareable game links
+- In-game chat with your opponent
+- Responsive design for desktop and mobile devices
+- Timer for each player
+- Beautiful UI with sound effects
+
+## Setup & Installation
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (version 14 or later)
+
+### Installation Steps
+
+1. Clone or download this repository
+2. Open a terminal/command prompt in the project folder
+3. Install dependencies:
+   ```
+   npm install
+   ```
+4. Start the server:
+   ```
+   npm start
+   ```
+5. Access the game:
+   - Local: http://localhost:3000
+   - LAN: http://[your-ip-address]:3000
 
 ## How to Play
 
-1. From the main menu, choose a game mode:
-   - Player vs Player: Play against another person on the same device
-   - Player vs Computer: Play against the Stockfish chess engine
-2. Click on a piece to select it
-3. Valid moves will be shown with small green circles
-4. Click on a highlighted position to move the piece
-5. Take turns between white and black
-   - When playing against the computer, you control the white pieces
-   - The computer will automatically make its move after you play
-6. Each player has 60 seconds to make a move, indicated by the timer
-7. If a player doesn't move within the time limit, the opponent wins
-8. When a king is in check, it will be highlighted in red
-9. The game ends when there's a checkmate, stalemate, or timeout
-10. Click "Reset Game" to start over or "Main Menu" to return to the menu
-11. Double-click anywhere to toggle fullscreen mode
+### Local Play
 
-## Computer Opponent
+- Choose "Player vs Player (Local)" for 2 players on the same device
+- Choose "Player vs Computer" to play against the AI
+- Adjust the difficulty level as desired
 
-The computer opponent uses the Stockfish chess engine, one of the strongest open-source chess engines available. When playing against the computer:
+### Online Multiplayer
 
-- You always play as white
-- The computer's thinking is indicated by a pulsing orange timer
-- The computer's skill level can be adjusted by changing the search depth in the code
-- The computer plays instantly at lower difficulty settings, but may take a few seconds to move at higher settings
+1. **Create a Game**:
+   - Click "Online Multiplayer"
+   - Select "Create Game"
+   - Share the game using either:
+     - Send the shareable link directly to your friend
+     - Copy the room code and share it
 
-## Sound Effects
+2. **Join a Game**:
+   - If you received a link: Simply click it to join
+   - If you received a code:
+     - Click "Online Multiplayer"
+     - Select "Join Game"
+     - Enter the code
+     - Click "Join"
 
-The game includes sound effects for:
-- Moving pieces
-- Capturing opponent pieces
-- Check situations
-- Starting a new game
-- Game ending (checkmate, stalemate, or timeout)
+3. **Playing Online**:
+   - The game creator plays as White (first move)
+   - The joining player plays as Black
+   - Use the in-game chat to communicate with your opponent
+   - The board is automatically disabled when it's not your turn
 
-## Implementation Details
+## No Server Required!
 
-- Pure HTML, CSS and JavaScript (no frameworks or libraries)
-- Uses Stockfish.js chess engine for the computer opponent
-- Unicode chess symbols for pieces
-- Grid-based board layout
-- Piece-specific movement validation
-- Check and checkmate detection
-- Move validation to prevent illegal moves
-- Audio integration
-- Timed moves with visual feedback
+The multiplayer feature uses WebRTC for direct peer-to-peer connections:
 
-## Missing Features
+- Players connect directly to each other without a dedicated game server
+- Only a small signaling server is used for initial connection setup
+- Once connected, all game data flows directly between players
+- Your moves never go through a server, reducing latency
 
-This implementation doesn't include:
-- En passant captures
-- Draw by repetition
-- Move history/notation
-- Choice of time controls
-- Piece selection for pawn promotion (always promotes to queen)
-- Choosing sides (white/black) when playing against the computer
+## Game Rules
 
-## Setup
+- Standard chess rules apply
+- Castling, en passant, and pawn promotion are all implemented
+- Checkmate and stalemate detection are included
 
-1. Place sound files in the `sounds` directory with the following names:
-   - move.mp3
-   - capture.mp3
-   - check.mp3
-   - game-start.mp3
-   - game-end.mp3
+## Technical Information
 
-Feel free to enhance the game with additional features! 
+The game uses:
+- WebRTC for peer-to-peer connections
+- A minimal signaling server (hosted on Glitch.com)
+- Browser's Clipboard API for easy link sharing
+
+## Development
+
+For development with auto-restart:
+```
+npm run dev
+```
+
+## Troubleshooting
+
+- **Cannot Connect**: Try refreshing and rejoining. Ensure your browser supports WebRTC.
+- **Friend Cannot Join**: Make sure you're sharing the correct link or code.
+- **Connection Lost**: If you lose connection, both players need to start a new game.
+- **No Chat Appearing**: Some corporate networks block WebRTC - try on a different network.
+
+## License
+
+This project is open source and available for personal use and modification. 
