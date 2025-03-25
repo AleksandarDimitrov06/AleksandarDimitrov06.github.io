@@ -191,7 +191,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Initialize Stockfish if playing against computer
         if (isComputerOpponent) {
             console.log("Starting game with computer opponent");
+            // On mobile, try to initialize Stockfish but don't wait for it
             initStockfish();
+            
+            // Set a safety timeout to ensure AI is initialized or fallback is ready
+            setTimeout(() => {
+                console.log("Checking AI initialization status");
+                // This ensures we're ready for the AI's first move when the time comes
+                if (isComputerOpponent && !stockfishWorker) {
+                    console.log("Stockfish not available on this device, preparing fallback AI");
+                }
+            }, 1000);
         }
         
         // Reset and start timer
@@ -284,18 +294,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const computerTimer = blackTimer;
         computerTimer.classList.add('thinking');
         
-        // Set a timeout to prevent infinite AI thinking
+        // Set a timeout to prevent infinite AI thinking - shorter on mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const timeoutDuration = isMobile ? 3000 : 5000; // Shorter timeout on mobile
+        
         const safetyTimeout = setTimeout(() => {
             if (isComputerThinking) {
                 console.warn("AI thinking timeout reached - forcing move");
                 isComputerThinking = false;
                 computerTimer.classList.remove('thinking');
                 // Force a move if the AI is taking too long
-                makeRandomMove();
+                useFallbackAI();
             }
-        }, 5000); // 5 seconds maximum thinking time
+        }, timeoutDuration);
         
-        // Use a small delay to give a thinking effect
+        // Use a small delay to give a thinking effect - shorter on mobile
+        const thinkingDelay = isMobile ? 300 : 800;
+        
         setTimeout(() => {
             // If game state has changed during the timeout, abort
             if (isGameOver || currentPlayer !== 'black' || isPaused) {
@@ -307,12 +322,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                // Try using Stockfish first, then fall back to simple AI
-                if (stockfishWorker) {
-                    requestStockfishMove();
-                } else {
-                    // Use the fallback AI if Stockfish is not available
+                // On mobile, prefer the simple AI for better performance
+                if (isMobile || !stockfishWorker) {
+                    console.log("Using simple AI (mobile or Stockfish unavailable)");
                     useFallbackAI();
+                } else {
+                    // Use Stockfish on desktop if available
+                    requestStockfishMove();
                 }
                 clearTimeout(safetyTimeout);
             } catch (e) {
@@ -322,11 +338,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 computerTimer.classList.remove('thinking');
                 clearTimeout(safetyTimeout);
                 
-                // If there's a serious error, force a random move as last resort
-                console.log("AI failed, trying makeRandomMove as last resort");
-                setTimeout(() => makeRandomMove(), 500);
+                // If there's a serious error, use the fallback AI
+                console.log("Error occurred, using fallback AI");
+                setTimeout(() => useFallbackAI(), 100);
             }
-        }, 800); // Longer delay for more natural feel
+        }, thinkingDelay);
     }
     
     // Request a move from Stockfish
@@ -438,7 +454,47 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("AI is searching for moves with color:", currentPlayer);
         
         try {
-            // Find the best move
+            // Check if this is the first move (for mobile optimization)
+            const isFirstMove = gameBoard.flat().filter(cell => 
+                cell && cell.color === 'white' && cell.hasMoved).length <= 1;
+            
+            // On mobile or for the first move, use a simpler approach
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if ((isMobile && isFirstMove) || isFirstMove) {
+                console.log("Using optimized first move for mobile");
+                // Common first moves for black
+                const commonFirstMoves = [
+                    {startRow: 1, startCol: 4, endRow: 2, endCol: 4}, // e7-e6
+                    {startRow: 1, startCol: 4, endRow: 3, endCol: 4}, // e7-e5
+                    {startRow: 0, startCol: 1, endRow: 2, endCol: 2}, // Knight b8-c6
+                    {startRow: 0, startCol: 6, endRow: 2, endCol: 5}  // Knight g8-f6
+                ];
+                
+                // Try each common move
+                for (const move of commonFirstMoves) {
+                    if (isValidMoveWrapper(move.startRow, move.startCol, move.endRow, move.endCol)) {
+                        // Check if this move is safe
+                        const testBoard = JSON.parse(JSON.stringify(gameBoard));
+                        movePieceWrapper(testBoard, move.startRow, move.startCol, move.endRow, move.endCol);
+                        
+                        if (!isKingInCheckWrapper('black', testBoard)) {
+                            // Execute the move with a short delay
+                            setTimeout(() => {
+                                if (!isGameOver && currentPlayer === 'black' && !isPaused) {
+                                    console.log("Executing common first move:", move);
+                                    makeComputerMove(move.startRow, move.startCol, move.endRow, move.endCol);
+                                } else {
+                                    isComputerThinking = false;
+                                    blackTimer.classList.remove('thinking');
+                                }
+                            }, 50);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // Find the best move using the full AI
             const bestMove = findBestMove(
                 gameBoard, 
                 currentPlayer, 
@@ -501,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
             blackTimer.classList.remove('thinking');
             
             // Make a random valid move as last resort
-            makeRandomMove();
+            setTimeout(() => makeRandomMove(), 100);
         }
     }
     
@@ -1883,45 +1939,66 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBoard();
     }
     
+    // Switch turns between players
     function switchTurn() {
-        // Reset the timer for the next player's move
-        resetTimer();
-        
-        // Switch to the other player
         currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
         
-        console.log(`Switched turn to ${currentPlayer}`);
+        // Reset the selected piece
+        selectedPiece = null;
         
-        // After switching turns, check if the new current player is in check
-        isInCheck = isKingInCheck(currentPlayer, gameBoard);
+        // Clear all highlights
+        clearHighlights();
         
-        // Update the check highlight
-        updateCheckHighlight();
+        // Reset timer for the next move
+        resetTimer();
+        startTimer();
         
-        // Check for checkmate
-        if (isInCheck && isCheckmate(currentPlayer)) {
-            isGameOver = true;
+        // Update active timer indicator
+        if (currentPlayer === 'white') {
+            whiteTimer.classList.add('active');
+            blackTimer.classList.remove('active');
+        } else {
+            blackTimer.classList.add('active');
+            whiteTimer.classList.remove('active');
+        }
+        
+        // Check for game-ending conditions
+        if (isCheckmate(currentPlayer)) {
             const winner = currentPlayer === 'white' ? 'Black' : 'White';
             statusDisplay.textContent = `${winner} wins by checkmate!`;
-            playSound(gameEndSound);
-            return;
-        }
-        
-        // Check for stalemate
-        if (!isInCheck && isStalemate(currentPlayer)) {
             isGameOver = true;
-            statusDisplay.textContent = "Game ends in stalemate!";
+            playSound(gameEndSound);
+            return;
+        } else if (isStalemate(currentPlayer)) {
+            statusDisplay.textContent = 'Game ends in stalemate!';
+            isGameOver = true;
             playSound(gameEndSound);
             return;
         }
         
-        // Start the timer for the next player's move
-        if (!isGameOver) {
-            startTimer();
-        }
-        
-        // Update the display
+        // Update status text
         updateStatus();
+        
+        // Highlight king if in check
+        updateCheckHighlight();
+        
+        // Request computer move if it's computer's turn
+        if (isComputerOpponent && currentPlayer === 'black' && !isGameOver) {
+            // If we're on a mobile device or experiencing delays, ensure a move happens
+            // by using a safety timeout
+            const ensureMoveTimeout = setTimeout(() => {
+                if (isComputerOpponent && currentPlayer === 'black' && !isGameOver && !isComputerThinking) {
+                    console.log("Safety timeout: AI move not requested yet, forcing request");
+                    requestComputerMove();
+                }
+            }, 500);
+            
+            // Regular move request with a very small delay to let UI update
+            setTimeout(() => {
+                requestComputerMove();
+                clearTimeout(ensureMoveTimeout);
+            }, 50);
+        }
     }
     
     function updateStatus() {
