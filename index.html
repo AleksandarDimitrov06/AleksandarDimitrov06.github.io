@@ -30,7 +30,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Multiplayer Options Dialog -->
     <div class="dialog-overlay" id="multiplayer-dialog" style="display: none;">
         <div class="dialog-content">
@@ -57,11 +57,22 @@
                 <div class="timer black-timer" id="black-timer">01:00</div>
             </div>
         </header>
-        
+
+        <div class="captured-pieces-container">
+            <div class="captured-pieces-row">
+                <div class="captured-pieces-label">White Captures</div>
+                <div class="captured-pieces captured-pieces-white" id="white-captures"></div>
+            </div>
+            <div class="captured-pieces-row">
+                <div class="captured-pieces-label">Black Captures</div>
+                <div class="captured-pieces captured-pieces-black" id="black-captures"></div>
+            </div>
+        </div>
+
         <div class="board-container">
             <div class="board" id="board"></div>
         </div>
-        
+
         <div class="controls">
             <button id="reset-btn">Reset Game</button>
             <button id="menu-btn">Main Menu</button>
@@ -74,11 +85,11 @@
     <audio id="check-sound" src="sounds/check.mp3" preload="auto"></audio>
     <audio id="game-start-sound" src="sounds/game-start.mp3" preload="auto"></audio>
     <audio id="game-end-sound" src="sounds/game-end.mp3" preload="auto"></audio>
-    
+
     <!-- Chess utilities and AI -->
     <script src="js/chess-utils.js"></script>
     <script src="js/simple-ai.js"></script>
     <script src="js/multiplayer.js"></script>
     <script src="script.js"></script>
 </body>
-</html> 
+</html>

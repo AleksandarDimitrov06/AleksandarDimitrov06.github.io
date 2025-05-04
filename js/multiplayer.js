@@ -914,6 +914,8 @@ function makeOpponentMove(startRow, startCol, endRow, endCol) {
     
     console.log(`Opponent moving ${piece.color} ${piece.type} from [${startRow},${startCol}] to [${endRow},${endCol}]`);
     
+    const isCapture = gameBoard[endRow][endCol] !== null;
+    
     // Check for castling
     if (piece.type === 'king' && Math.abs(startCol - endCol) === 2) {
         const isKingside = endCol > startCol;
@@ -930,7 +932,19 @@ function makeOpponentMove(startRow, startCol, endRow, endCol) {
         }
     }
     
-    const isCapture = gameBoard[endRow][endCol] !== null;
+    // Handle captures for tracking captured pieces
+    if (isCapture) {
+        const capturedPiece = gameBoard[endRow][endCol];
+        
+        // Add the captured piece to the capturing player's collection
+        capturedPieces[piece.color].push({
+            type: capturedPiece.type,
+            color: capturedPiece.color
+        });
+        
+        // Update the captured pieces display
+        renderCapturedPieces();
+    }
     
     // Move the piece
     gameBoard[endRow][endCol] = piece;
@@ -949,8 +963,15 @@ function makeOpponentMove(startRow, startCol, endRow, endCol) {
     // Re-render the board
     renderBoard();
     
-    // Play appropriate sound
-    if (isCapture) {
+    // Check if this move puts opponent in check - for sound effects
+    const opponentColor = piece.color === 'white' ? 'black' : 'white';
+    const willGiveCheck = isKingInCheck(opponentColor, gameBoard);
+    
+    // Play appropriate sound - check takes priority
+    if (willGiveCheck) {
+        // Only play check sound when giving check
+        playSound(checkSound);
+    } else if (isCapture) {
         playSound(captureSound);
     } else {
         playSound(moveSound);

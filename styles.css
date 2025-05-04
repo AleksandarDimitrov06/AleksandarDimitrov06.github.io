@@ -485,40 +485,40 @@ button:active {
     .container {
         padding: 15px;
     }
-    
+
     .board {
         width: 90vw;
         height: 90vw;
         border-width: 5px;
         aspect-ratio: 1 / 1;
     }
-    
+
     .square {
         font-size: 7vw;
     }
-    
+
     .piece {
         font-size: 7vw;
     }
-    
+
     .controls {
         flex-direction: column;
         gap: 10px;
     }
-    
+
     .status {
         font-size: 16px;
     }
-    
+
     h1 {
         font-size: 26px;
     }
-    
+
     .menu-content {
         padding: 30px;
         width: 90%;
     }
-    
+
     .menu-content h1 {
         font-size: 32px;
     }
@@ -829,17 +829,17 @@ button:active {
         padding: 20px;
         max-width: 90%;
     }
-    
+
     .room-code {
         font-size: 28px;
         padding: 8px 15px;
     }
-    
+
     .dialog-btn {
         padding: 10px 20px;
         font-size: 14px;
     }
-    
+
     #room-code-input {
         padding: 10px;
         font-size: 16px;
@@ -1083,7 +1083,7 @@ button:active {
         bottom: 10px;
         right: 10px;
     }
-    
+
     .connection-status {
         font-size: 12px;
         padding: 6px 12px;
@@ -1241,4 +1241,70 @@ button:active {
 
 .direct-mode-btn.secondary:hover {
     background-color: #7f8c8d;
-} 
+}
+
+/* Captured Pieces Display */
+.captured-pieces-container {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+    width: 100%;
+    gap: 10px;
+}
+
+.captured-pieces-row {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.captured-pieces {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 5px 10px;
+    min-height: 40px;
+    width: 100%;
+    overflow-x: auto;
+}
+
+.captured-pieces .piece {
+    width: 25px;
+    height: 25px;
+    font-size: 1.2em;
+    margin: 0 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+}
+
+.captured-pieces-label {
+    font-size: 12px;
+    color: #ecf0f1;
+    text-align: left;
+    margin-bottom: 5px;
+    font-weight: 500;
+    opacity: 0.7;
+}
+
+.captured-pieces-white {
+    border-left: 3px solid white;
+}
+
+.captured-pieces-black {
+    border-left: 3px solid #444;
+}
+
+@media (max-width: 550px) {
+    .captured-pieces .piece {
+        width: 20px;
+        height: 20px;
+        font-size: 1em;
+    }
+}
